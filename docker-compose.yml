@@ -1,17 +1,11 @@
-version: '2'
+version: '3'
 services:
-
-  
   ngrok:
     container_name: ngrok
     image: wernight/ngrok
-    command: ngrok http 0.0.0.0:3001
-    ports:
-      -  '4040:4040'
+    command: ngrok http agent:3000
 
-  medici_training_agent:
+  agent:
     build: .
-    ports:
-      - "3001:3001"
     depends_on:
-      - ngrok
+      - ngrok 
