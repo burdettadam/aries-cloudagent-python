@@ -59,12 +59,14 @@ class CredDefRecord(BaseRecord):
             *,
             record_id: str = None,
             cred_def_id: str = None,
+            cred_def_json: str = None,
             schema_id: str = None,
             state: str = None,
             **kwargs):
         """Initialize a new SchemaRecord."""
         super().__init__(record_id, state or self.STATE_UNWRITTEN, **kwargs)
         self.cred_def_id = cred_def_id
+        self.cred_def_json = cred_def_json
         self.schema_id = schema_id
 
     @property
@@ -84,6 +86,7 @@ class CredDefRecord(BaseRecord):
             prop: getattr(self, prop)
             for prop in (
                 'cred_def_id',
+                'cred_def_json',
                 'schema_id',
                 'state',
             )
@@ -99,6 +102,7 @@ class CredDefRecordSchema(BaseRecordSchema):
         model_class = CredDefRecord
 
     cred_def_id = fields.Str(required=False)
+    cred_def_json = fields.Str(required=False)
     schema_id = fields.Str(required=False)
 
 
@@ -117,7 +121,8 @@ CredDefID, CredDefIDSchema = generate_model_schema(
     handler='aries_cloudagent.messaging.admin.PassHandler',
     msg_type=CRED_DEF_ID,
     schema={
-        'cred_def_id': fields.Str(required=True)
+        'cred_def_id': fields.Str(required=True),
+        'cred_def_json': fields.Str(required=True)
     }
 )
 
@@ -131,7 +136,7 @@ class SendCredDefHandler(BaseHandler):
         ledger: BaseLedger = await context.inject(BaseLedger)
         try:
             async with ledger:
-                credential_definition_id = await shield(
+                credential_definition_id, credential_definition_json = await shield(
                     ledger.send_credential_definition(context.message.schema_id)
                 )
         except Exception as err:
@@ -144,6 +149,7 @@ class SendCredDefHandler(BaseHandler):
 
         cred_def_record = CredDefRecord(
             cred_def_id=credential_definition_id,
+            cred_def_json=credential_definition_json,
             schema_id=context.message.schema_id,
             state=CredDefRecord.STATE_WRITTEN
         )
@@ -152,7 +158,10 @@ class SendCredDefHandler(BaseHandler):
             reason="Committed credential definition to ledger"
         )
 
-        result = CredDefID(cred_def_id=credential_definition_id)
+        result = CredDefID(
+            cred_def_id=credential_definition_id,
+            cred_def_json=credential_definition_json,
+        )
         result.assign_thread_from(context.message)
         await responder.send_reply(result)
 

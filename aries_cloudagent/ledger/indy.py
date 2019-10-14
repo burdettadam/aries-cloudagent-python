@@ -490,7 +490,7 @@ class IndyLedger(BaseLedger):
                 credential_definition_id,
             )
 
-        return credential_definition_id
+        return credential_definition_id, credential_definition_json
 
     async def get_credential_definition(self, credential_definition_id: str):
         """

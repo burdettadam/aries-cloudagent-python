@@ -93,7 +93,7 @@ async def credential_definitions_send_credential_definition(request: web.BaseReq
 
     ledger: BaseLedger = await context.inject(BaseLedger)
     async with ledger:
-        credential_definition_id = await shield(
+        credential_definition_id, credential_definition_json = await shield(
             ledger.send_credential_definition(schema_id)
         )
 

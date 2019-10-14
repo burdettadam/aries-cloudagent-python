@@ -373,7 +373,7 @@ class TestIndyLedger(AsyncTestCase):
             mock_wallet.get_public_did = async_mock.CoroutineMock()
             mock_did = mock_wallet.get_public_did.return_value
 
-            result_id = await ledger.send_credential_definition(schema_id, tag)
+            result_id, result_json = await ledger.send_credential_definition(schema_id, tag)
             assert result_id == cred_id
 
             mock_wallet.get_public_did.assert_called_once_with()
