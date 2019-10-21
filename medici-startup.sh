@@ -10,4 +10,5 @@ aca-py start \
     --auto-respond-presentation-proposal --auto-respond-presentation-request --auto-verify-presentation \
     --invite --invite-role admin --invite-label "$AGENT_NAME (admin)" \
     --genesis-url https://raw.githubusercontent.com/sovrin-foundation/sovrin/master/sovrin/pool_transactions_sandbox_genesis \
-    --wallet-type indy
+    --wallet-type indy \
+    2>/dev/null
