@@ -3,6 +3,9 @@ services:
   ngrok-1:
     image: wernight/ngrok
     command: ngrok http agent-1:3000 --log stdout
+  ngrok-3:
+    image: wernight/ngrok
+    command: ngrok http agent-2:3001 --log stdout
   agent-1:
     build: .
     environment:
@@ -12,6 +15,9 @@ services:
   ngrok-2:
     image: wernight/ngrok
     command: ngrok http agent-2:3000 --log stdout
+  ngrok-4:
+    image: wernight/ngrok
+    command: ngrok http agent-2:3001 --log stdout
   agent-2:
     build: .
     environment:
