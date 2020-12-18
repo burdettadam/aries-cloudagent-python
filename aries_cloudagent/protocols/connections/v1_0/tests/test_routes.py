@@ -8,6 +8,8 @@ from .....connections.models.conn_record import ConnRecord
 from .....storage.error import StorageNotFoundError
 
 from .. import routes as test_module
+from aries_cloudagent.wallet.in_memory import InMemoryWallet
+from aries_cloudagent.protocols.coordinate_mediation.v1_0.models.mediation_record import MediationRecord
 
 
 class TestConnectionRoutes(AsyncTestCase):
@@ -21,6 +23,75 @@ class TestConnectionRoutes(AsyncTestCase):
             query={},
             __getitem__=lambda _, k: self.request_dict[k],
         )
+
+    async def test_targets_list(self):
+        self.request.match_info = {"conn_id": "dummy"}
+        STATE_COMPLETED = ConnRecord.State.COMPLETED
+        STATE_INVITATION = ConnRecord.State.INVITATION
+        STATE_ABANDONED = ConnRecord.State.ABANDONED
+        ROLE_REQUESTER = ConnRecord.Role.REQUESTER
+        with async_mock.patch.object(
+            test_module, "ConnectionTarget", autospec=True,
+        ) as mock_conn_targets, async_mock.patch.object(
+            InMemoryWallet, "get_local_did", autospec=True
+        ) as mock_wallet_get_local_did, async_mock.patch.object(
+            test_module.ConnRecord, "retrieve_by_id", autospec=True
+        ) as mock_conn_rec_retrieve_by_id:
+            mock_conn_rec.query = async_mock.CoroutineMock()
+            mock_conn_rec.Role = async_mock.MagicMock(return_value=ROLE_REQUESTER)
+            mock_conn_rec.State = async_mock.MagicMock(
+                COMPLETED=STATE_COMPLETED,
+                INVITATION=STATE_INVITATION,
+                ABANDONED=STATE_ABANDONED,
+                get=async_mock.MagicMock(
+                    side_effect=[
+                        ConnRecord.State.ABANDONED,
+                        ConnRecord.State.COMPLETED,
+                        ConnRecord.State.INVITATION,
+                    ]
+                ),
+            )
+            mock_conn_targets.query = async_mock.CoroutineMock()
+            targets = [
+                async_mock.MagicMock(
+                    serialize=async_mock.MagicMock({
+                        "did": "L9ipdYeXuBapKUE516CnUu",
+                        "endpoint": "http://192.168.1.24:3005",
+                        "label": "BMO",
+                        "recipient_keys": [
+                            "BSP5maxvGofnAbN8yYcHMok4G6hb8LozyygDBUwSak9V"
+                        ],
+                        "routingKeys": [],
+                        "sender_key": "BXPrckeJRBKXvraNsJTnSj98mgjnF4F5GGGD4GTyd4bj"
+                    })
+                )
+            ]
+            mock_conn_targets.query.return_value = [{
+                        "did": "L9ipdYeXuBapKUE516CnUu",
+                        "endpoint": "http://192.168.1.24:3005",
+                        "label": "BMO",
+                        "recipient_keys": [
+                            "BSP5maxvGofnAbN8yYcHMok4G6hb8LozyygDBUwSak9V"
+                        ],
+                        "routingKeys": [],
+                        "sender_key": "BXPrckeJRBKXvraNsJTnSj98mgjnF4F5GGGD4GTyd4bj"
+                    }]
+
+            with async_mock.patch.object(
+                test_module.web, "json_response"
+            ) as mock_response:
+                await test_module.target_list(self.request)
+                mock_response.assert_called_once_with(
+                    {
+                        "results": [
+                            {
+                                k: c.serialize.return_value[k]
+                                for k in ["recipient_keys", "routingKeys", "endpoint"]
+                            }
+                            for c in targets
+                        ]
+                    }
+                )
 
     async def test_connections_list(self):
         self.request.query = {
@@ -267,6 +338,70 @@ class TestConnectionRoutes(AsyncTestCase):
             with self.assertRaises(test_module.web.HTTPBadRequest):
                 await test_module.connections_retrieve(self.request)
 
+    async def test_connections_create_invitation_with_mediation(self):
+        mediation_record = MediationRecord(
+            role=MediationRecord.ROLE_CLIENT,
+            state=MediationRecord.STATE_GRANTED,
+            connection_id=self.test_mediator_conn_id,
+            routing_keys=self.test_mediator_routing_keys,
+            endpoint=self.test_mediator_endpoint,
+        )
+        await mediation_record.save(self.session)
+        self.context.update_settings({"public_invites": True})
+        body = {
+            "recipient_keys": ["test"],
+            "routing_keys": ["test"],
+            "service_endpoint": "http://example.com",
+            "metadata": {"hello": "world"},
+        }
+        self.request.json = async_mock.CoroutineMock(return_value=body)
+        self.request.query = {
+            "auto_accept": "true",
+            "alias": "alias",
+            "public": "true",
+            "multi_use": "true",
+            "mediation_id": mediation_record.mediation_id,
+        }
+
+        with async_mock.patch.object(
+            test_module, "ConnectionManager", autospec=True
+        ) as mock_conn_mgr, async_mock.patch.object(
+            test_module.web, "json_response"
+        ) as mock_response:
+
+            mock_conn_mgr.return_value.create_invitation = async_mock.CoroutineMock(
+                return_value=(
+                    async_mock.MagicMock(  # connection record
+                        connection_id="dummy", alias="conn-alias"
+                    ),
+                    async_mock.MagicMock(  # invitation
+                        serialize=async_mock.MagicMock(return_value={"a": "value"}),
+                        to_url=async_mock.MagicMock(return_value="http://endpoint.ca"),
+                    ),
+                )
+            )
+
+            await test_module.connections_create_invitation(self.request)
+            mock_conn_mgr.return_value.create_invitation.assert_called_once_with(
+                **{
+                    key: json.loads(value) if key != "alias" else value
+                    for key, value in self.request.query.items()
+                },
+                recipient_keys=body["recipient_keys"],
+                routing_keys=body["routing_keys"],
+                my_endpoint=body["service_endpoint"],
+                metadata=body["metadata"],
+            )
+            mock_response.assert_called_once_with(
+                {
+                    "connection_id": "dummy",
+                    "invitation": {"a": "value"},
+                    "invitation_url": "http://endpoint.ca",
+                    "alias": "conn-alias",
+                    "mediation_id": mediation_record.mediation_id,
+                }
+            )
+
     async def test_connections_create_invitation(self):
         self.context.update_settings({"public_invites": True})
         body = {
@@ -274,7 +409,6 @@ class TestConnectionRoutes(AsyncTestCase):
             "routing_keys": ["test"],
             "service_endpoint": "http://example.com",
             "metadata": {"hello": "world"},
-            "mediation_id": "some-id",
         }
         self.request.json = async_mock.CoroutineMock(return_value=body)
         self.request.query = {
@@ -312,7 +446,6 @@ class TestConnectionRoutes(AsyncTestCase):
                 routing_keys=body["routing_keys"],
                 my_endpoint=body["service_endpoint"],
                 metadata=body["metadata"],
-                mediation_id="some-id"
             )
             mock_response.assert_called_once_with(
                 {
