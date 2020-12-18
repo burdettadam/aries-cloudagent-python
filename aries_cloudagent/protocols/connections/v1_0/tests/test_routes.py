@@ -26,10 +26,6 @@ class TestConnectionRoutes(AsyncTestCase):
 
     async def test_targets_list(self):
         self.request.match_info = {"conn_id": "dummy"}
-        STATE_COMPLETED = ConnRecord.State.COMPLETED
-        STATE_INVITATION = ConnRecord.State.INVITATION
-        STATE_ABANDONED = ConnRecord.State.ABANDONED
-        ROLE_REQUESTER = ConnRecord.Role.REQUESTER
         with async_mock.patch.object(
             test_module, "ConnectionTarget", autospec=True,
         ) as mock_conn_targets, async_mock.patch.object(
@@ -37,20 +33,6 @@ class TestConnectionRoutes(AsyncTestCase):
         ) as mock_wallet_get_local_did, async_mock.patch.object(
             test_module.ConnRecord, "retrieve_by_id", autospec=True
         ) as mock_conn_rec_retrieve_by_id:
-            mock_conn_rec.query = async_mock.CoroutineMock()
-            mock_conn_rec.Role = async_mock.MagicMock(return_value=ROLE_REQUESTER)
-            mock_conn_rec.State = async_mock.MagicMock(
-                COMPLETED=STATE_COMPLETED,
-                INVITATION=STATE_INVITATION,
-                ABANDONED=STATE_ABANDONED,
-                get=async_mock.MagicMock(
-                    side_effect=[
-                        ConnRecord.State.ABANDONED,
-                        ConnRecord.State.COMPLETED,
-                        ConnRecord.State.INVITATION,
-                    ]
-                ),
-            )
             mock_conn_targets.query = async_mock.CoroutineMock()
             targets = [
                 async_mock.MagicMock(
@@ -342,9 +324,11 @@ class TestConnectionRoutes(AsyncTestCase):
         mediation_record = MediationRecord(
             role=MediationRecord.ROLE_CLIENT,
             state=MediationRecord.STATE_GRANTED,
-            connection_id=self.test_mediator_conn_id,
-            routing_keys=self.test_mediator_routing_keys,
-            endpoint=self.test_mediator_endpoint,
+            connection_id="mediator-conn-id",
+            routing_keys=[
+                "3Dn1SJNPaCXcvvJvSbsFWP2xaCjMom3can8CQNhWrTRR"
+            ],
+            endpoint="http://mediator.example.com",
         )
         await mediation_record.save(self.session)
         self.context.update_settings({"public_invites": True})
@@ -412,10 +396,11 @@ class TestConnectionRoutes(AsyncTestCase):
         }
         self.request.json = async_mock.CoroutineMock(return_value=body)
         self.request.query = {
-            "auto_accept": "true",
+            "auto_accept": "True",
             "alias": "alias",
-            "public": "true",
-            "multi_use": "true",
+            "public": "True",
+            "multi_use": "True",
+            "mediation_id": "None",
         }
 
         with async_mock.patch.object(
@@ -438,10 +423,11 @@ class TestConnectionRoutes(AsyncTestCase):
 
             await test_module.connections_create_invitation(self.request)
             mock_conn_mgr.return_value.create_invitation.assert_called_once_with(
-                **{
-                    key: json.loads(value) if key != "alias" else value
-                    for key, value in self.request.query.items()
-                },
+                auto_accept="True",
+                #alias="alias",
+                public="True",
+                multi_use="True",
+                mediation_id="None",
                 recipient_keys=body["recipient_keys"],
                 routing_keys=body["routing_keys"],
                 my_endpoint=body["service_endpoint"],
